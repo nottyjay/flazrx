@@ -1,5 +1,6 @@
 package com.d3code.flazrx.rtmp.client;
 
+import com.d3code.flazrx.rtmp.RTMPHandshake;
 import com.d3code.flazrx.rtmp.RTMPReader;
 import com.d3code.flazrx.rtmp.RTMPWriter;
 import com.d3code.flazrx.rtmp.server.ServerStream;
@@ -10,7 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,6 +72,162 @@ public class ClientOptions {
         this.saveAs = saveAs;
     }
 
+    public String getAppName() {
+        return appName;
+    }
+
+    public void setAppName(String appName) {
+        this.appName = appName;
+    }
+
+    public String getFileToPublish() {
+        return fileToPublish;
+    }
+
+    public void setFileToPublish(String fileToPublish) {
+        this.fileToPublish = fileToPublish;
+    }
+
+    public RTMPReader getReaderToPublish() {
+        return readerToPublish;
+    }
+
+    public void setReaderToPublish(RTMPReader readerToPublish) {
+        this.readerToPublish = readerToPublish;
+    }
+
+    public Object[] getArgs() {
+        return args;
+    }
+
+    public void setArgs(Object... args) {
+        this.args = args;
+    }
+
+    public byte[] getClientVersionToUse() {
+        return clientVersionToUse;
+    }
+
+    public void setClientVersionToUse(byte[] clientVersionToUse) {
+        this.clientVersionToUse = clientVersionToUse;
+    }
+
+    public int getLoad() {
+        return load;
+    }
+
+    public void setLoad(int load) {
+        this.load = load;
+    }
+
+    public int getLoop() {
+        return loop;
+    }
+
+    public void setLoop(int loop) {
+        this.loop = loop;
+    }
+
+    public void setPublishType(ServerStream.PublishType publishType) {
+        this.publishType = publishType;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public String getStreamName() {
+        return streamName;
+    }
+
+    public void setStreamName(String streamName) {
+        this.streamName = streamName;
+    }
+
+    public RTMPWriter getWriterToSave() {
+        return writerToSave;
+    }
+
+    public void setWriterToSave(RTMPWriter writerToSave) {
+        this.writerToSave = writerToSave;
+    }
+
+    public String getSaveAs() {
+        return saveAs;
+    }
+
+    public void setSaveAs(String saveAs) {
+        this.saveAs = saveAs;
+    }
+
+    public boolean isRtmpe() {
+        return rtmpe;
+    }
+
+    public void setRtmpe(boolean rtmpe) {
+        this.rtmpe = rtmpe;
+    }
+
+    public int getStart() {
+        return start;
+    }
+
+    public void setStart(int start) {
+        this.start = start;
+    }
+
+    public int getLength() {
+        return length;
+    }
+
+    public void setLength(int length) {
+        this.length = length;
+    }
+
+    public int getBuffer() {
+        return buffer;
+    }
+
+    public void setBuffer(int buffer) {
+        this.buffer = buffer;
+    }
+
+    public byte[] getSwfHash() {
+        return swfHash;
+    }
+
+    public void setSwfHash(byte[] swfHash) {
+        this.swfHash = swfHash;
+    }
+
+    public int getSwfSize() {
+        return swfSize;
+    }
+
+    public void setSwfSize(int swfSize) {
+        this.swfSize = swfSize;
+    }
+
+    public int getThreads() {
+        return threads;
+    }
+
+    public void setThreads(int threads) {
+        this.threads = threads;
+    }
+
     public void parseUrl(String url){
         Matcher matcher = URL_PATTERN.matcher(url);
         if(!matcher.matches()){
@@ -111,36 +270,23 @@ public class ClientOptions {
 
     protected static Options getCliOptions(){
         final Options options = new Options();
-        options.addOption(new Option("help", "print this message"));
-        options.addOption(OptionBuilder.withArgName("host").hasArg()
-                .withDescription("host name").create("host"));
-        options.addOption(OptionBuilder.withArgName("port").hasArg()
-                .withDescription("port number").create("port"));
-        options.addOption(OptionBuilder.withArgName("app").hasArg()
-                .withDescription("app name").create("app"));
-        options.addOption(OptionBuilder
-                .withArgName("start").hasArg()
-                .withDescription("start position (milliseconds)").create("start"));
-        options.addOption(OptionBuilder.withArgName("length").hasArg()
-                .withDescription("length (milliseconds)").create("length"));
-        options.addOption(OptionBuilder.withArgName("buffer").hasArg()
-                .withDescription("buffer duration (milliseconds)").create("buffer"));
-        options.addOption(new Option("rtmpe", "use RTMPE (encryption)"));
-        options.addOption(new Option("live", "publish local file to server in 'live' mode"));
-        options.addOption(new Option("record", "publish local file to server in 'record' mode"));
-        options.addOption(new Option("append", "publish local file to server in 'append' mode"));
-        options.addOption(OptionBuilder.withArgName("property=value").hasArgs(2)
-                .withValueSeparator().withDescription("add / over-ride connection param").create("D"));
-        options.addOption(OptionBuilder.withArgName("swf").hasArg()
-                .withDescription("path to (decompressed) SWF for verification").create("swf"));
-        options.addOption(OptionBuilder.withArgName("version").hasArg()
-                .withDescription("client version to use in RTMP handshake (hex)").create("version"));
-        options.addOption(OptionBuilder.withArgName("load").hasArg()
-                .withDescription("no. of client connections (server load testing)").create("load"));
-        options.addOption(OptionBuilder.withArgName("loop").hasArg()
-                .withDescription("for publish mode, loop count").create("loop"));
-        options.addOption(OptionBuilder.withArgName("threads").hasArg()
-                .withDescription("for load testing (load) mode, thread pool size").create("threads"));
+        options.addOption("help", "print this message");
+        options.addOption(Option.builder("host").argName("host").hasArg().desc("host name").build());
+        options.addOption(Option.builder("port").argName("port").hasArg().desc("port number").build());
+        options.addOption(Option.builder("app").argName("app").hasArg().desc("app name").build());
+        options.addOption(Option.builder("start").argName("start").hasArg().desc("start position (milliseconds)").build());
+        options.addOption(Option.builder("length").argName("length").hasArg().desc("length (milliseconds)").build());
+        options.addOption(Option.builder("buffer").argName("buffer").hasArg().desc("buffer duration (milliseconds)").build());
+        options.addOption("rtmpe", "use RTMPE (encryption)");
+        options.addOption("live", "publish local file to server in 'live' mode");
+        options.addOption("record", "publish local file to server in 'record' mode");
+        options.addOption("append", "publish local file to server in 'append' mode");
+        options.addOption(Option.builder("D").argName("property=value").hasArgs().numberOfArgs(2).valueSeparator().desc("add / over-ride connection param").build());
+        options.addOption(Option.builder("swf").argName("swf").hasArg().desc("path to (decompressed) SWF for verification").build());
+        options.addOption(Option.builder("version").argName("version").hasArg().desc("client version to use in RTMP handshake (hex)").build());
+        options.addOption(Option.builder("load").argName("load").hasArg().desc("no. of client connections (server load testing)").build());
+        options.addOption(Option.builder("loop").argName("loop").hasArg().desc("for publish mode, loop count").build());
+        options.addOption(Option.builder("threads").argName("threads").hasArg().desc("for load testing (load) mode, thread pool size").build());
         return options;
     }
 
@@ -233,62 +379,6 @@ public class ClientOptions {
         return true;
     }
 
-    public String getAppName() {
-        return appName;
-    }
-
-    public void setAppName(String appName) {
-        this.appName = appName;
-    }
-
-    public String getFileToPublish() {
-        return fileToPublish;
-    }
-
-    public void setFileToPublish(String fileToPublish) {
-        this.fileToPublish = fileToPublish;
-    }
-
-    public RTMPReader getReaderToPublish() {
-        return readerToPublish;
-    }
-
-    public void setReaderToPublish(RTMPReader readerToPublish) {
-        this.readerToPublish = readerToPublish;
-    }
-
-    public Object[] getArgs() {
-        return args;
-    }
-
-    public void setArgs(Object... args) {
-        this.args = args;
-    }
-
-    public byte[] getClientVersionToUse() {
-        return clientVersionToUse;
-    }
-
-    public void setClientVersionToUse(byte[] clientVersionToUse) {
-        this.clientVersionToUse = clientVersionToUse;
-    }
-
-    public int getLoad() {
-        return load;
-    }
-
-    public void setLoad(int load) {
-        this.load = load;
-    }
-
-    public int getLoop() {
-        return loop;
-    }
-
-    public void setLoop(int loop) {
-        this.loop = loop;
-    }
-
     public String getTcUrl(){
         return (rtmpe ? "rtmpe://" : "rtmp://") + host + ":" + port + "/" + appName;
     }
@@ -300,8 +390,49 @@ public class ClientOptions {
     public void initSwfVerification(File localSwfFile){
         LoggerUtil.info(LOG, "initializing swf verification data for: " + localSwfFile.getAbsolutePath());
         byte[] bytes = Utils.readAsByteArray(localSwfFile);
-//        byte[] hash = Utils.sha256(bytes, RTMPHand)
+        byte[] hash = Utils.sha256(bytes, RTMPHandshake.CLIENT_CONST);
         swfSize = bytes.length;
         swfHash = hash;
+        LoggerUtil.info(LOG, "swf verification initialized - size: {}, hash: {}", swfSize, Utils.toHex(swfHash));
+    }
+
+    public void putParam(String key, Object value){
+        if(params == null){
+            params = new LinkedHashMap<String, Object>();
+        }
+        params.put(key, value);
+    }
+
+    public void setParams(Map<String, Object> params){
+        this.params = params;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[host: '").append(host);
+        sb.append("' port: ").append(port);
+        sb.append(" appName: '").append(appName);
+        sb.append("' streamName: '").append(streamName);
+        sb.append("' saveAs: '").append(saveAs);
+        sb.append("' rtmpe: ").append(rtmpe);
+        sb.append(" publish: ").append(publishType);
+        if(clientVersionToUse != null) {
+            sb.append(" clientVersionToUse: '").append(Utils.toHex(clientVersionToUse)).append('\'');
+        }
+        sb.append(" start: ").append(start);
+        sb.append(" length: ").append(length);
+        sb.append(" buffer: ").append(buffer);
+        sb.append(" params: ").append(params);
+        sb.append(" args: ").append(Arrays.toString(args));
+        if(swfHash != null) {
+            sb.append(" swfHash: '").append(Utils.toHex(swfHash));
+            sb.append("' swfSize: ").append(swfSize).append('\'');
+        }
+        sb.append(" load: ").append(load);
+        sb.append(" loop: ").append(loop);
+        sb.append(" threads: ").append(threads);
+        sb.append(']');
+        return sb.toString();
     }
 }
