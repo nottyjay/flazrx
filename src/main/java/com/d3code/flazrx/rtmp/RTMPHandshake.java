@@ -1,10 +1,10 @@
 package com.d3code.flazrx.rtmp;
 
 import com.d3code.flazrx.rtmp.client.ClientOptions;
+import com.d3code.flazrx.util.LoggerUtil;
 import com.d3code.flazrx.util.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import org.omg.PortableInterceptor.INACTIVE;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,9 +12,15 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
 import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.DHPublicKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.PublicKey;
+import java.security.spec.KeySpec;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -229,4 +235,245 @@ public class RTMPHandshake {
         }
     }
 
+    private void initCiphers(){
+        BigInteger otherPublicKeyInt = new BigInteger(1, peerPublicKey);
+        try{
+            KeyFactory keyFactory = KeyFactory.getInstance("DH");
+            KeySpec otherPublicKeySpec = new DHPublicKeySpec(otherPublicKeyInt, DH_MODULUS, DH_BASE);
+            PublicKey otherPublicKey = keyFactory.generatePublic(otherPublicKeySpec);
+            keyAgreement.doPhase(otherPublicKey, true);
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }
+        byte[] sharedSecret = keyAgreement.generateSecret();
+        byte[] digestOut = Utils.sha256(peerPublicKey, sharedSecret);
+        byte[] digestIn = Utils.sha256(ownPublicKey, sharedSecret);
+        try{
+            cipherIn = Cipher.getInstance("RC4");
+            cipherIn.init(Cipher.DECRYPT_MODE, new SecretKeySpec(digestIn, 0, 16, "RC4"));
+            LoggerUtil.debug(LOG, "initialized encryption / decryption ciphers");
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }
+        byte[] dummyBytes = new byte[HANDSHAKE_SIZE];
+        cipherIn.update(dummyBytes);
+        cipherOut.update(dummyBytes);
+    }
+
+    //============================ CLIENT ================================
+    public ByteBuf encodeClient0(){
+        ByteBuf out = Unpooled.buffer(1);
+        if(rtmpe){
+            out.writeByte((byte) 0x06);
+        }else{
+            out.writeByte((byte) 0x03);
+        }
+        return out;
+    }
+
+    public ByteBuf encodeClient1(){
+        ByteBuf out = generateRandomHandshake();
+        out.setInt(0, 0);// zeros
+        out.setBytes(4, clientVersionToUse);
+        validationType = getValidatiionTypeForClientVersion(clientVersionToUse);
+        LoggerUtil.info(LOG, "using client version {}", Utils.toHex(clientVersionToUse));
+        if(validationType == 0){
+            ownPartOne = out.copy();// save for later
+            return out;
+        }
+        LoggerUtil.debug(LOG, "creating client part 1, validation type: {}", validationType);
+        initKeyPair();
+        int publicKeyOffset = publishKeyOffset(out, validationType);
+        out.setBytes(publicKeyOffset, ownPublicKey);
+        int digestOffset = digestOffset(out, validationType);
+        ownPartOneDigest = digestHandshake(out, digestOffset, CLIENT_CONST);
+        out.setBytes(digestOffset, ownPartOneDigest);
+        return out;
+    }
+
+    public boolean decodeServerAll(ByteBuf in){
+        decodeServer0(in.readBytes(1));
+        decodeServer1(in.readBytes(HANDSHAKE_SIZE));
+        decodeServer2(in.readBytes(HANDSHAKE_SIZE));
+        return true;
+    }
+
+    private void decodeServer0(ByteBuf in){
+        byte flag = in.getByte(0);
+        if(rtmpe && flag != 0x06){
+            LoggerUtil.warn(LOG, "server does not support rtmpe! falling back to rtmp");
+            rtmpe = false;
+        }
+    }
+
+    private void decodeServer1(ByteBuf in){
+        peerTime = new byte[4];
+        in.getBytes(0, peerTime);
+        byte[] serverVersion = new byte[4];
+        in.getBytes(4, serverVersion);
+        LoggerUtil.debug(LOG, "server time: {}, version: {}", Utils.toHex(peerTime), Utils.toHex(serverVersion));
+        if(swfHash != null){
+            byte[] key = new byte[DIGEST_SIZE];
+            in.getBytes(HANDSHAKE_SIZE - DIGEST_SIZE, key);
+            byte[] digest = Utils.sha256(swfHash, key);
+            ByteBuf swfv = Unpooled.buffer(42);
+            swfv.writeByte((byte)0x01);
+            swfv.writeByte((byte)0x01);
+            swfv.writeInt(swfSize);
+            swfv.writeInt(swfSize);
+            swfv.writeBytes(digest);
+            swfvBytes = new byte[42];
+            swfv.readBytes(swfvBytes);
+            LoggerUtil.info(LOG, "calculated swf verification response: {}", Utils.toHex(swfvBytes));
+        }
+        if(validationType == 0){
+            peerPartOne = in;
+            return;
+        }
+        LoggerUtil.debug(LOG, "processing server part1, validation type: {}", validationType);
+        int digestOffset = digestOffset(in, validationType);
+        byte[] expected = digestHandshake(in, digestOffset, SERVER_CONST);
+        peerPartOneDigest = new byte[DIGEST_SIZE];
+        in.getBytes(digestOffset, peerPartOneDigest);
+        if(!Arrays.equals(peerPartOneDigest, expected)){
+            int altValidationType = validationType == 1 ? 2 : 1;
+            LoggerUtil.warn(LOG, "server part 1 validation failed for type {}, will try with type {}", validationType, altValidationType);
+            digestOffset = digestOffset(in, altValidationType);
+            expected = digestHandshake(in, digestOffset, SERVER_CONST);
+            peerPartOneDigest = new byte[DIGEST_SIZE];
+            in.getBytes(digestOffset, peerPartOneDigest);
+            if(!Arrays.equals(peerPartOneDigest, expected)){
+                throw new RuntimeException("server part 1 validation failed even for type: " + altValidationType);
+            }
+            validationType = altValidationType;
+        }
+        LoggerUtil.info(LOG, "server part 1 validation success");
+        peerPublicKey = new byte[PUBLIC_KEY_SIZE];
+        int publicKeyOffset = publishKeyOffset(in, validationType);
+        in.getBytes(publicKeyOffset, peerPublicKey);
+        initCiphers();
+    }
+
+    private void decodeServer2(ByteBuf in){
+        if(validationType == 0){
+            return;
+        }
+        LoggerUtil.debug(LOG, "processing server port 2 for validation");
+        byte[] key = Utils.sha256(ownPartOneDigest, SERVER_CONST_CRUD);
+        int digestOffset = HANDSHAKE_SIZE - DIGEST_SIZE;
+        byte[] expected = digestHandshake(in, digestOffset, key);
+        byte[] actual = new byte[DIGEST_SIZE];
+        in.getBytes(digestOffset, actual);
+        if(!Arrays.equals(actual, expected)){
+            throw new RuntimeException("server part 2 validation failed");
+        }
+        LoggerUtil.info(LOG, "server part 2 validation success");
+    }
+
+    public ByteBuf encodeClient2(){
+        if(validationType == 0){
+
+        }
+        LoggerUtil.debug(LOG, "creating client part 2 for validation");
+        ByteBuf out = generateRandomHandshake();
+        byte[] key = Utils.sha256(peerPartOneDigest, CLIENT_CONST_CRUD);
+        int digestOffset = HANDSHAKE_SIZE - DIGEST_SIZE;
+        byte[] digest = digestHandshake(out, digestOffset, key);
+        out.setBytes(digestOffset, digest);
+        return out;
+    }
+
+    public void decodeClient0And1(ByteBuf in){
+        decodeClient0(in.readBytes(1));
+        decodeClient1(in.readBytes(HANDSHAKE_SIZE));
+    }
+
+    public void decodeClient0(ByteBuf in){
+        final byte firstByte = in.readByte();
+        rtmpe = firstByte == 0x06;
+        LoggerUtil.debug(LOG, "client first byte {}, rtmpe: {}", Utils.toHex(firstByte), rtmpe);
+    }
+
+    public boolean decodeClient1(ByteBuf in){
+        peerTime = new byte[4];
+        in.getBytes(0, peerTime);
+        byte[] clientVersion = new byte[4];
+        in.getBytes(4, clientVersion);
+        LoggerUtil.debug(LOG, "client time: {}, version: {}", Utils.toHex(peerTime), Utils.toHex(clientVersion));
+        validationType = getValidatiionTypeForClientVersion(clientVersion);
+        if(validationType == 0){
+            peerPartOne = in;
+            return true;
+        }
+        LoggerUtil.debug(LOG, "processing client part 1 for validation type: {}", validationType);
+        initKeyPair();
+        int digestOffset = digestOffset(in, validationType);
+        peerPartOneDigest = new byte[DIGEST_SIZE];
+        in.getBytes(digestOffset, peerPartOneDigest);
+        byte[] expected = digestHandshake(in, digestOffset, CLIENT_CONST);
+        if(!Arrays.equals(peerPartOneDigest, expected)){
+            throw new RuntimeException("client part 1 validation failed");
+        }
+        LoggerUtil.info(LOG, "client part 1 validation success");
+        int publicKeyOffset = publishKeyOffset(in, validationType);
+        peerPublicKey = new byte[PUBLIC_KEY_SIZE];
+        in.getBytes(publicKeyOffset, peerPublicKey);
+        initCiphers();
+        return true;
+    }
+
+    public ByteBuf encodeServer0(){
+        ByteBuf out = Unpooled.buffer(1);
+        out.writeByte((byte)(rtmpe ? 0x06 : 0x03));
+        return out;
+    }
+
+    public ByteBuf encodeServer1(){
+        ByteBuf out = generateRandomHandshake();
+        out.setInt(0, 0);
+        out.setBytes(4, serverVersionToUse);
+        if(validationType == 0){
+            ownPartOne = out.copy();
+            return out;
+        }
+        LoggerUtil.debug(LOG, "creating server part 1 for validation type: {}", validationType);
+        int publicKeyOffset = publishKeyOffset(out, validationType);
+        out.setBytes(publicKeyOffset, ownPublicKey);
+        int digestOffset = digestOffset(out, validationType);
+        ownPartOneDigest = digestHandshake(out, digestOffset, SERVER_CONST);
+        out.setBytes(digestOffset, ownPartOneDigest);
+        return out;
+    }
+
+    public void decodeClient2(ByteBuf raw){
+        ByteBuf in = raw.readBytes(HANDSHAKE_SIZE);
+        if(validationType == 0){
+            return;
+        }
+        LoggerUtil.debug(LOG, "processing client part 2 for validation");
+        byte[] key = Utils.sha256(ownPartOneDigest, CLIENT_CONST_CRUD);
+        int digestOffset = HANDSHAKE_SIZE - DIGEST_SIZE;
+        byte[] expected = digestHandshake(in, digestOffset, key);
+        byte[] actual = new byte[DIGEST_SIZE];
+        in.getBytes(digestOffset, actual);
+        if(!Arrays.equals(actual, expected)){
+            throw new RuntimeException("client part 2 validation failed");
+        }
+        LoggerUtil.info(LOG, "client part 2 validation success");
+    }
+
+    public ByteBuf encodeServer2(){
+        if(validationType == 0){
+            peerPartOne.setBytes(0, peerTime);
+            peerPartOne.setInt(4, 0);
+            return peerPartOne;
+        }
+        LoggerUtil.debug(LOG, "creating server part 2 for validation");
+        ByteBuf out = generateRandomHandshake();
+        byte[] key = Utils.sha256(peerPartOneDigest, SERVER_CONST_CRUD);
+        int digestOffset = HANDSHAKE_SIZE - DIGEST_SIZE;
+        byte[] digest = digestHandshake(out, digestOffset, key);
+        out.setBytes(digestOffset, digest);
+        return out;
+    }
 }

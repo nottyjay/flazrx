@@ -30,4 +30,28 @@ public class LoggerUtil {
             logger.info(format, args);
         }
     }
+
+    public static void warn(Logger logger, String message){
+        if(logger.isWarnEnabled()){
+            logger.warn(message);
+        }
+    }
+
+    public static void warn(Logger logger, String format, Object... args){
+        if(logger.isWarnEnabled()){
+            logger.warn(format, args);
+        }
+    }
+
+    public static void error(Logger logger, String message){
+        if(logger.isErrorEnabled()){
+            logger.error(message);
+        }
+    }
+
+    public static void error(Logger logger, String format, Object... args){
+        if(logger.isErrorEnabled()){
+            logger.error(format, args);
+        }
+    }
 }

@@ -228,6 +228,18 @@ public class ClientOptions {
         this.threads = threads;
     }
 
+    public Map<String, Object> getParams(){
+        return params;
+    }
+
+    public void setParams(Map<String, Object> params){
+        this.params = params;
+    }
+
+    public ServerStream.PublishType getPublishType() {
+        return publishType;
+    }
+
     public void parseUrl(String url){
         Matcher matcher = URL_PATTERN.matcher(url);
         if(!matcher.matches()){
@@ -401,10 +413,6 @@ public class ClientOptions {
             params = new LinkedHashMap<String, Object>();
         }
         params.put(key, value);
-    }
-
-    public void setParams(Map<String, Object> params){
-        this.params = params;
     }
 
     @Override
